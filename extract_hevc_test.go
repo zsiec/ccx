@@ -86,7 +86,7 @@ func TestExtractCaptionsHEVC_DTVCC(t *testing.T) {
 	nalData := buildHEVCSEINAL([]byte{
 		0xFE, 0xAA, 0xBB, // cc_type=2 (DTVCC data)
 		0xFF, 0xCC, 0xDD, // cc_type=3 (DTVCC start)
-		0xFC, 'X', 'Y',   // cc_type=0 (CEA-608 field 1)
+		0xFC, 'X', 'Y', // cc_type=0 (CEA-608 field 1)
 	}, 3)
 
 	cd := ExtractCaptionsHEVC(nalData)
@@ -107,9 +107,9 @@ func TestExtractCaptionsHEVC_DTVCC(t *testing.T) {
 func TestExtractCaptionsHEVC_ChannelRouting(t *testing.T) {
 	nalData := buildHEVCSEINAL([]byte{
 		0xFC, 0x94, 0xA5, // CC1 RU2 (with parity)
-		0xFC, 'A', 'B',   // inherits CC1
+		0xFC, 'A', 'B', // inherits CC1
 		0xFC, 0x9C, 0xA5, // CC2 RU2
-		0xFC, 'C', 'D',   // inherits CC2
+		0xFC, 'C', 'D', // inherits CC2
 	}, 4)
 
 	cd := ExtractCaptionsHEVC(nalData)

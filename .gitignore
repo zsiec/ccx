@@ -4,3 +4,4 @@
 *.out
 *.prof
 /vendor/
+/ccx

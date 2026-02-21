@@ -191,9 +191,9 @@ func removeEPB(data []byte) []byte {
 
 // NAL type constants for identifying SEI NAL units.
 const (
-	H264NALTypeSEI     = 6
-	HEVCNALTypeSEIPre  = 39
-	HEVCNALTypeSEISuf  = 40
+	H264NALTypeSEI    = 6
+	HEVCNALTypeSEIPre = 39
+	HEVCNALTypeSEISuf = 40
 )
 
 // IsH264SEI reports whether the NAL unit header byte indicates an H.264 SEI.

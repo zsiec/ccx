@@ -937,6 +937,11 @@ func (d *CEA708Decoder) AddTriplet(pair DTVCCPair) string {
 	return d.drainPacket()
 }
 
+// StyledRegions returns structured caption regions from the underlying service.
+func (d *CEA708Decoder) StyledRegions() []CaptionRegion {
+	return d.service.StyledRegions()
+}
+
 func (d *CEA708Decoder) drainPacket() string {
 	if len(d.buf) < 1 {
 		return ""

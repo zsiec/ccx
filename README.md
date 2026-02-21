@@ -120,6 +120,71 @@ decoded := ccx.DeserializeCaptionFrame(wire)
 
 A TypeScript decoder is included in [`js/decode.ts`](js/decode.ts) for browser-side parsing.
 
+## CLI Tool
+
+The `ccx` command-line tool reads H.264 or H.265 Annex B bitstreams and extracts captions in multiple output formats.
+
+```bash
+go install github.com/zsiec/ccx/cmd/ccx@latest
+```
+
+### Usage
+
+```
+ccx [flags] [file]
+```
+
+Reads from a file or stdin. The codec is auto-detected from NAL unit headers, or can be forced with `--codec`.
+
+### Output Formats
+
+| Format | Flag | Description |
+|--------|------|-------------|
+| **text** | `-f text` | Caption text with NAL indices (default) |
+| **json** | `-f json` | Structured JSON with full styling/positioning data |
+| **render** | `-f render` | Visual terminal rendering with ANSI colors and box-drawing |
+| **raw** | `-f raw` | Hex dump of caption byte pairs with protocol decoding |
+
+### Examples
+
+```bash
+# Basic text extraction
+ccx testdata/h264_608_rollup2.h264
+
+# Visual rendering with ANSI colors
+ccx -f render testdata/h264_708_multiwindow.h264
+
+# Full structured JSON output
+ccx -f json testdata/h265_608_pac_colors.h265
+
+# Raw byte-level debugging
+ccx -f raw testdata/h264_608_popon.h264
+
+# Verbose text mode (shows style attributes)
+ccx -v testdata/h264_608_midrow_colors.h264
+
+# Pipe from ffmpeg (extract from MP4/MKV containers)
+ffmpeg -i video.mp4 -c:v copy -bsf:v h264_mp4toannexb -f h264 - 2>/dev/null | ccx
+ffmpeg -i video.mp4 -c:v copy -bsf:v hevc_mp4toannexb -f hevc - 2>/dev/null | ccx -f render
+
+# Stream JSON as newline-delimited objects
+ccx -f json --ndjson stream.h264
+
+# Include raw byte pairs in JSON output
+ccx -f json --json-raw testdata/h264_608_special_chars.h264
+```
+
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `-f`, `--format` | Output format: `text`, `json`, `render`, `raw` (default: `text`) |
+| `--codec` | Force codec: `h264`, `h265` (default: auto-detect from NAL headers or file extension) |
+| `-v`, `--verbose` | Show style attributes in text mode |
+| `--json-raw` | Include raw byte pairs in JSON output |
+| `--ndjson` | Stream JSON as newline-delimited objects (one per caption event) |
+| `--version` | Print version and exit |
+
 ## CEA-608 Coverage
 
 Full CTA-608-E compliance:
@@ -192,11 +257,14 @@ ccx/
 ├── cea708.go        # CEA-708 decoder state machine
 ├── enums.go         # CEA-708 typed constants
 ├── codec.go         # Binary serialization/deserialization
+├── cmd/ccx/         # CLI tool (text, json, render, raw output)
 ├── js/
 │   └── decode.ts    # TypeScript reference decoder
+├── testdata/        # Generated H.264/H.265 bitstreams for E2E tests
+│   └── generate.go  # Bitstream generator (go run testdata/generate.go)
 └── examples/
     ├── decode/      # Decoder usage example
-    └── extract/     # H.264 extraction example
+    └── extract/     # H.264/H.265 extraction example
 ```
 
 ## License
