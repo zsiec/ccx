@@ -30,22 +30,33 @@ Output Formats:
   render   Visual terminal rendering with ANSI colors
   raw      Hex dump of caption byte pairs with protocol decoding
 
+Channel Filter:
+  By default, 708 captions are shown when present (higher fidelity),
+  falling back to 608 if no 708 data is found. Use -ch to override:
+    708      CEA-708 only
+    608      CEA-608 only
+    cc1-cc4  specific CEA-608 channel
+    all      show all channels
+
 Flags:
 `
 
 func main() {
 	var (
-		format   string
-		codecStr string
-		verbose  bool
-		jsonRaw  bool
-		ndjson   bool
-		showVer  bool
+		format    string
+		codecStr  string
+		channel   string
+		verbose   bool
+		jsonRaw   bool
+		ndjson    bool
+		showVer   bool
 	)
 
 	flag.StringVar(&format, "format", "text", "output format: text, json, render, raw")
 	flag.StringVar(&format, "f", "text", "output format (shorthand)")
 	flag.StringVar(&codecStr, "codec", "", "force codec: h264, h265 (default: auto-detect)")
+	flag.StringVar(&channel, "channel", "", "filter to channel: 608, 708, cc1-cc4, all (default: 708 if present, then 608)")
+	flag.StringVar(&channel, "ch", "", "filter to channel (shorthand)")
 	flag.BoolVar(&verbose, "verbose", false, "show extra detail in text mode")
 	flag.BoolVar(&verbose, "v", false, "verbose (shorthand)")
 	flag.BoolVar(&jsonRaw, "json-raw", false, "include raw byte pairs in JSON output")
@@ -130,15 +141,32 @@ func main() {
 		fatal("unknown format %q (use text, json, render, or raw)", format)
 	}
 
+	cf := parseChannelFilter(channel)
+
 	if format != "json" {
 		printBanner(w, inputName, forceCodec)
 	}
 
+	var events []captionEvent
 	err := parseStream(r, forceCodec, func(ev captionEvent) {
-		sink.event(ev)
+		events = append(events, ev)
 	})
 	if err != nil {
 		fatal("parse error: %v", err)
+	}
+
+	if cf == channelFilterAuto {
+		cf = autoSelectChannel(events)
+	}
+
+	for i := range events {
+		filterEvent(&events[i], cf)
+		ev := events[i]
+		hasFrames := ev.Frame608 != nil || ev.Frame708 != nil
+		hasRawData := ev.Data != nil && (len(ev.Data.CC608Pairs) > 0 || len(ev.Data.DTVCC) > 0)
+		if hasFrames || hasRawData {
+			sink.event(ev)
+		}
 	}
 
 	sink.summary()
@@ -162,6 +190,97 @@ func codecFromExtension(path string) codec {
 		return codecH265
 	default:
 		return codecUnknown
+	}
+}
+
+type channelFilter int
+
+const (
+	channelFilterAuto channelFilter = iota
+	channelFilterAll
+	channelFilter608
+	channelFilter708
+	channelFilterCC1
+	channelFilterCC2
+	channelFilterCC3
+	channelFilterCC4
+)
+
+func parseChannelFilter(s string) channelFilter {
+	switch strings.ToLower(s) {
+	case "":
+		return channelFilterAuto
+	case "all":
+		return channelFilterAll
+	case "608":
+		return channelFilter608
+	case "708":
+		return channelFilter708
+	case "cc1", "1":
+		return channelFilterCC1
+	case "cc2", "2":
+		return channelFilterCC2
+	case "cc3", "3":
+		return channelFilterCC3
+	case "cc4", "4":
+		return channelFilterCC4
+	default:
+		fatal("unknown channel %q (use 608, 708, cc1-cc4, or all)", s)
+		return channelFilterAll
+	}
+}
+
+func autoSelectChannel(events []captionEvent) channelFilter {
+	has708 := false
+	has608 := false
+	for _, ev := range events {
+		if ev.Frame708 != nil {
+			has708 = true
+		}
+		if ev.Frame608 != nil {
+			has608 = true
+		}
+		if has708 && has608 {
+			break
+		}
+	}
+	if has708 {
+		return channelFilter708
+	}
+	if has608 {
+		return channelFilter608
+	}
+	return channelFilterAll
+}
+
+func filterEvent(ev *captionEvent, cf channelFilter) {
+	switch cf {
+	case channelFilterAll:
+		return
+	case channelFilter708:
+		ev.Frame608 = nil
+	case channelFilter608:
+		ev.Frame708 = nil
+	case channelFilterCC1:
+		ev.Frame708 = nil
+		if ev.Frame608 != nil && ev.Frame608.Channel != 1 {
+			ev.Frame608 = nil
+		}
+	case channelFilterCC2:
+		ev.Frame708 = nil
+		if ev.Frame608 != nil && ev.Frame608.Channel != 2 {
+			ev.Frame608 = nil
+		}
+	case channelFilterCC3:
+		ev.Frame708 = nil
+		if ev.Frame608 != nil && ev.Frame608.Channel != 3 {
+			ev.Frame608 = nil
+		}
+	case channelFilterCC4:
+		ev.Frame708 = nil
+		if ev.Frame608 != nil && ev.Frame608.Channel != 4 {
+			ev.Frame608 = nil
+		}
 	}
 }
 

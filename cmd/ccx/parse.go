@@ -38,6 +38,14 @@ type streamParser struct {
 	dec608    [5]*ccx.CEA608Decoder // indexed by channel (1-4); 0 unused
 	dec708    *ccx.CEA708Decoder
 	nalIndex  int
+
+	// Per-field control code dedup. CEA-608 sends control codes twice for
+	// reliability. The decoder's own dedup only catches consecutive
+	// duplicates, but text pairs from other NALs can intervene, so we
+	// track per-field at the stream level with a NAL gap tolerance.
+	lastCCCtrl      [2][2]byte // last control pair per field
+	lastCCWasCtrl   [2]bool    // was previous pair on this field a control?
+	lastCCCtrlNAL   [2]int     // NAL index of last control pair per field
 }
 
 func newStreamParser(c codec) *streamParser {
@@ -113,8 +121,30 @@ func (sp *streamParser) processNAL(nal []byte, emit func(captionEvent)) {
 		if ch < 1 || ch > 4 {
 			continue
 		}
+
+		cc1, cc2 := pair.Data[0], pair.Data[1]
+		f := int(pair.Field)
+		if f < 0 || f > 1 {
+			continue
+		}
+
+		isCtrl := cc1 >= 0x10 && cc1 <= 0x1F
+		if isCtrl {
+			cp := [2]byte{cc1, cc2}
+			nalGap := sp.nalIndex - sp.lastCCCtrlNAL[f]
+			if sp.lastCCWasCtrl[f] && sp.lastCCCtrl[f] == cp && nalGap <= 2 {
+				sp.lastCCWasCtrl[f] = false
+				continue
+			}
+			sp.lastCCCtrl[f] = cp
+			sp.lastCCWasCtrl[f] = true
+			sp.lastCCCtrlNAL[f] = sp.nalIndex
+		} else {
+			sp.lastCCWasCtrl[f] = false
+		}
+
 		dec := sp.dec608[ch]
-		text := dec.Decode(pair.Data[0], pair.Data[1])
+		text := dec.Decode(cc1, cc2)
 		if text != "" {
 			regions := dec.StyledRegions()
 			ev.Frame608 = &ccx.CaptionFrame{
