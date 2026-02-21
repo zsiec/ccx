@@ -120,10 +120,7 @@ func (o *renderOutput) renderRow(row ccx.CaptionRow, reg ccx.CaptionRegion) stri
 	for _, span := range row.Spans {
 		styled := renderSpan(span)
 		b.WriteString(styled)
-		for _, r := range span.Text {
-			_ = r
-			visLen++
-		}
+		visLen += len([]rune(span.Text))
 	}
 
 	if visLen < renderWidth {

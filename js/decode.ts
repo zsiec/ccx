@@ -1,3 +1,23 @@
+/**
+ * ccx/js — TypeScript decoder for the ccx binary wire format (v2).
+ *
+ * Parses the compact binary representation produced by CaptionFrame.Serialize()
+ * in Go, enabling browser-side caption rendering via WebTransport or WebSocket.
+ *
+ * Usage:
+ *   import { parseCaptionData } from './decode';
+ *   const frame = parseCaptionData(new Uint8Array(buffer));
+ *   if (frame) {
+ *     for (const region of frame.regions) {
+ *       for (const row of region.rows) {
+ *         for (const span of row.spans) {
+ *           // render span.text with span.fgColor, span.italic, etc.
+ *         }
+ *       }
+ *     }
+ *   }
+ */
+
 export interface CaptionSpan {
   text: string;
   fgColor: string;
@@ -53,6 +73,13 @@ function rgbToHex(r: number, g: number, b: number): string {
   );
 }
 
+/**
+ * Parses a binary caption frame into structured caption data.
+ * Handles both the v2 wire format (magic 0xCC02) and the legacy format
+ * (plain channel + text).
+ *
+ * Returns null if the data is too short to parse.
+ */
 export function parseCaptionData(data: Uint8Array): CaptionData | null {
   if (data.length < 2) return null;
 
