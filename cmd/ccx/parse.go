@@ -34,18 +34,21 @@ type captionEvent struct {
 }
 
 type streamParser struct {
-	codec    codec
-	dec608   *ccx.CEA608Decoder
-	dec708   *ccx.CEA708Decoder
-	nalIndex int
+	codec     codec
+	dec608    [5]*ccx.CEA608Decoder // indexed by channel (1-4); 0 unused
+	dec708    *ccx.CEA708Decoder
+	nalIndex  int
 }
 
 func newStreamParser(c codec) *streamParser {
-	return &streamParser{
+	sp := &streamParser{
 		codec:  c,
-		dec608: ccx.NewCEA608Decoder(),
 		dec708: ccx.NewCEA708Decoder(),
 	}
+	for i := 1; i <= 4; i++ {
+		sp.dec608[i] = ccx.NewCEA608Decoder()
+	}
+	return sp
 }
 
 // parseStream reads an Annex B bitstream and yields caption events.
@@ -106,9 +109,14 @@ func (sp *streamParser) processNAL(nal []byte, emit func(captionEvent)) {
 	}
 
 	for _, pair := range cd.CC608Pairs {
-		text := sp.dec608.Decode(pair.Data[0], pair.Data[1])
+		ch := pair.Channel
+		if ch < 1 || ch > 4 {
+			continue
+		}
+		dec := sp.dec608[ch]
+		text := dec.Decode(pair.Data[0], pair.Data[1])
 		if text != "" {
-			regions := sp.dec608.StyledRegions()
+			regions := dec.StyledRegions()
 			ev.Frame608 = &ccx.CaptionFrame{
 				Text:    text,
 				Channel: pair.Channel,
@@ -165,32 +173,53 @@ func splitAnnexB(data []byte) [][]byte {
 	return nals
 }
 
-// detectCodec inspects the first NAL unit to determine if the stream is
-// H.264 or H.265. H.264 NAL headers are 1 byte; H.265 uses 2 bytes with
-// the type in the upper 6 bits of byte 0.
+// detectCodec inspects NAL units to determine if the stream is H.264 or
+// H.265. It uses a voting approach because the single-byte H.264 NAL type
+// mask (0x1F) can collide with HEVC 2-byte headers (e.g. HEVC IDR_W_RADL
+// type 19 has byte 0 = 0x26, which looks like H.264 SEI type 6).
 func detectCodec(nals [][]byte) codec {
+	h264Votes := 0
+	h265Votes := 0
+
 	for _, nal := range nals {
-		if len(nal) == 0 {
+		if len(nal) < 2 {
 			continue
 		}
 
-		h264Type := nal[0] & 0x1F
-		if h264Type == 7 || h264Type == 8 {
-			return codecH264
-		}
-		if h264Type == 6 {
-			return codecH264
+		// HEVC: forbidden_zero_bit(1) | type(6) | layer_id(6) in byte 0-1,
+		// nuh_temporal_id_plus1(3) in low bits of byte 1 (must be >= 1).
+		if nal[0]&0x80 == 0 && nal[1]&0x07 != 0 {
+			hevcType := (nal[0] >> 1) & 0x3F
+			switch hevcType {
+			case 32, 33, 34: // VPS, SPS, PPS
+				h265Votes += 10
+			case 39, 40: // PREFIX_SEI, SUFFIX_SEI
+				h265Votes += 10
+			case 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, // TRAIL/TSA/STSA
+				16, 17, 18, 19, 20, 21: // BLA/IDR/CRA
+				h265Votes++
+			}
 		}
 
-		if len(nal) >= 2 {
-			hevcType := (nal[0] >> 1) & 0x3F
-			if hevcType == 32 || hevcType == 33 || hevcType == 34 {
-				return codecH265
-			}
-			if hevcType == 39 || hevcType == 40 {
-				return codecH265
+		// H.264: forbidden_zero_bit(1) | nal_ref_idc(2) | type(5)
+		if nal[0]&0x80 == 0 {
+			h264Type := nal[0] & 0x1F
+			switch h264Type {
+			case 7, 8: // SPS, PPS
+				h264Votes += 10
+			case 6: // SEI
+				h264Votes += 10
+			case 1, 2, 3, 4, 5: // slice types
+				h264Votes++
 			}
 		}
+	}
+
+	if h265Votes > h264Votes {
+		return codecH265
+	}
+	if h264Votes > 0 {
+		return codecH264
 	}
 	return codecUnknown
 }

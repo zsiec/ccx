@@ -84,30 +84,14 @@ func (o *renderOutput) buildGrid(frame *ccx.CaptionFrame) []string {
 		return grid
 	}
 
-	if len(frame.Regions) > 1 && frame.Regions[0].AnchorV == 0 && frame.Regions[1].AnchorV == 0 {
-		// Multiple 708 windows with default anchors: stack them vertically
-		// so they don't overlap on the same grid rows.
-		nextRow := 0
-		for _, reg := range frame.Regions {
-			for _, row := range reg.Rows {
-				targetRow := nextRow
-				if targetRow >= renderHeight {
-					break
-				}
-				grid[targetRow] = o.renderRow(row, reg)
-				nextRow++
-			}
-			nextRow++
-		}
-		return grid
-	}
-
 	for _, reg := range frame.Regions {
+		baseRow := anchorToGridRow(reg, renderHeight)
 		for _, row := range reg.Rows {
-			if row.Row < 0 || row.Row >= renderHeight {
+			targetRow := baseRow + row.Row
+			if targetRow < 0 || targetRow >= renderHeight {
 				continue
 			}
-			grid[row.Row] = o.renderRow(row, reg)
+			grid[targetRow] = o.renderRow(row, reg)
 		}
 	}
 	return grid
@@ -128,6 +112,45 @@ func (o *renderOutput) renderRow(row ccx.CaptionRow, reg ccx.CaptionRegion) stri
 		return justified
 	}
 	return b.String()
+}
+
+// anchorToGridRow maps a region's anchor position to a starting row on the
+// render grid. For CEA-608 regions (AnchorV=0, AnchorID=0), row indices are
+// already absolute screen rows so the base is 0. For CEA-708, the anchor
+// position is scaled to the grid and adjusted by the anchor point.
+func anchorToGridRow(reg ccx.CaptionRegion, gridHeight int) int {
+	if reg.AnchorV == 0 && reg.AnchorID == 0 && len(reg.Rows) > 0 && reg.Rows[0].Row > 0 {
+		return 0
+	}
+
+	rowCount := len(reg.Rows)
+	anchorV := reg.AnchorV
+
+	// Scale 708 anchor coordinates (0-74 absolute, 0-99 relative) to grid
+	maxAnchor := 74
+	if reg.RelativeToggle {
+		maxAnchor = 99
+	}
+	gridRow := anchorV * (gridHeight - 1) / maxAnchor
+
+	anchorID := reg.AnchorID
+	switch {
+	case anchorID >= 3 && anchorID <= 5: // middle anchors
+		gridRow -= rowCount / 2
+	case anchorID >= 6: // lower anchors
+		gridRow -= rowCount - 1
+	}
+
+	if gridRow < 0 {
+		gridRow = 0
+	}
+	if gridRow+rowCount > gridHeight {
+		gridRow = gridHeight - rowCount
+	}
+	if gridRow < 0 {
+		gridRow = 0
+	}
+	return gridRow
 }
 
 func applyJustify(rendered string, visLen int, justify int) string {
