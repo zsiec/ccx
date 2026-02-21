@@ -1,6 +1,6 @@
 # ccx
 
-A Go library for extracting, decoding, and encoding CEA-608/708 closed captions from H.264 video streams. Zero dependencies.
+A Go library for extracting, decoding, and encoding CEA-608/708 closed captions from H.264 and H.265/HEVC video streams. Zero dependencies.
 
 ```
 go get github.com/zsiec/ccx
@@ -8,17 +8,19 @@ go get github.com/zsiec/ccx
 
 ## What It Does
 
-**ccx** turns raw H.264 NAL units into fully structured, styled caption data — and provides a compact binary codec for sending that data over the wire.
+**ccx** turns raw H.264 and H.265/HEVC NAL units into fully structured, styled caption data — and provides a compact binary codec for sending that data over the wire.
 
 ```
-H.264 SEI NAL → ExtractCaptions() → CEA608Decoder / CEA708Service → StyledRegions() → Serialize()
+H.264 SEI NAL  → ExtractCaptions()     ─┐
+                                         ├→ CEA608Decoder / CEA708Service → StyledRegions() → Serialize()
+H.265 SEI NAL  → ExtractCaptionsHEVC() ─┘
 ```
 
 Three layers, usable independently:
 
 | Layer | What | Entry Points |
 |-------|------|-------------|
-| **Extract** | Pull caption bytes out of H.264 SEI NALs | `ExtractCaptions()`, `ExtractCEA608()` |
+| **Extract** | Pull caption bytes out of SEI NALs | `ExtractCaptions()` (H.264), `ExtractCaptionsHEVC()` (H.265) |
 | **Decode** | Full CEA-608/708 state machines | `CEA608Decoder`, `CEA708Service`, `CEA708Decoder` |
 | **Codec** | Compact binary serialization | `CaptionFrame.Serialize()`, `DeserializeCaptionFrame()` |
 
@@ -63,19 +65,41 @@ regions := svc.StyledRegions()
 ### Extract from H.264
 
 ```go
-// Pull captions from an SEI NAL unit
 cd := ccx.ExtractCaptions(nalData)
 
-// Decode CEA-608
 dec608 := ccx.NewCEA608Decoder()
 for _, pair := range cd.CC608Pairs {
     text := dec608.Decode(pair.Data[0], pair.Data[1])
 }
 
-// Decode CEA-708
 dec708 := ccx.NewCEA708Decoder()
 for _, pair := range cd.DTVCC {
     text := dec708.AddTriplet(pair)
+}
+```
+
+### Extract from H.265/HEVC
+
+```go
+cd := ccx.ExtractCaptionsHEVC(nalData)
+
+// Same decoding pipeline — only the extraction differs
+dec608 := ccx.NewCEA608Decoder()
+for _, pair := range cd.CC608Pairs {
+    text := dec608.Decode(pair.Data[0], pair.Data[1])
+}
+```
+
+### Detect SEI NAL Units
+
+```go
+// When scanning a bitstream, identify SEI NALs by header:
+if ccx.IsH264SEI(nalHeader) {
+    cd := ccx.ExtractCaptions(nalData)
+}
+
+if ccx.IsHEVCSEI(nalHeader0) {
+    cd := ccx.ExtractCaptionsHEVC(nalData)
 }
 ```
 
@@ -163,7 +187,7 @@ Legacy fallback (no magic): `[1] channel [n] text`
 ccx/
 ├── doc.go           # Package documentation
 ├── types.go         # CaptionFrame, CaptionRegion, CaptionRow, CaptionSpan
-├── extract.go       # H.264 SEI → caption byte extraction
+├── extract.go       # H.264/H.265 SEI → caption byte extraction
 ├── cea608.go        # CEA-608 decoder state machine
 ├── cea708.go        # CEA-708 decoder state machine
 ├── enums.go         # CEA-708 typed constants

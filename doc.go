@@ -1,20 +1,32 @@
-// Package ccx decodes CEA-608 and CEA-708 closed captions from H.264 video
-// streams and provides a compact binary codec for transporting styled caption
-// data over the wire.
+// Package ccx decodes CEA-608 and CEA-708 closed captions from H.264 and
+// H.265/HEVC video streams and provides a compact binary codec for transporting
+// styled caption data over the wire.
 //
 // The package has three layers that can be used independently:
 //
 // # Extraction
 //
 // [ExtractCaptions] pulls CEA-608 byte pairs and DTVCC (CEA-708) data out of
-// H.264 SEI NAL units containing ATSC A/53 user data. It handles emulation
-// prevention byte removal, parity stripping, field routing, and channel
-// identification.
+// H.264 SEI NAL units containing ATSC A/53 user data. [ExtractCaptionsHEVC]
+// does the same for H.265/HEVC streams, which use a 2-byte NAL header and
+// SEI NAL types 39/40 instead of H.264's type 6.
 //
+// Both functions handle emulation prevention byte removal, parity stripping,
+// field routing, and channel identification. The inner SEI message structure
+// and A/53 caption payload are identical across both codecs.
+//
+//	// H.264
 //	cd := ccx.ExtractCaptions(nalData)
+//
+//	// H.265/HEVC
+//	cd := ccx.ExtractCaptionsHEVC(nalData)
+//
 //	for _, pair := range cd.CC608Pairs {
 //	    text := decoder.Decode(pair.Data[0], pair.Data[1])
 //	}
+//
+// Helper functions [IsH264SEI] and [IsHEVCSEI] identify SEI NAL units by
+// their header bytes, useful when scanning Annex B or MPEG-TS bitstreams.
 //
 // # Decoding
 //
