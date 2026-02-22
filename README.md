@@ -207,7 +207,7 @@ Full CTA-708-E compliance:
 - **Predefined styles**: 7 pen styles (varying fonts, opacity, edge effects), 7 window styles (varying justification, opacity, direction)
 - **DTVCC packets**: Packet assembly, size decoding, service block parsing, extended service numbers
 
-## Wire Format (v2)
+## Wire Format
 
 The binary codec is designed for real-time transport (WebTransport, WebSocket, etc.). Typical caption frames serialize to 40-120 bytes.
 
