@@ -139,11 +139,22 @@ func generateBitstream(name, codec string, frames [][]byte) {
 		writeAnnexBNAL(f, pps)
 	}
 
+	// CTA-708 packet sequence numbers count 0-3 per DTVCC packet.
+	seq := byte(0)
 	for _, frame := range frames {
+		frame = append([]byte(nil), frame...)
+		for i := 0; i+2 < len(frame); i += 3 {
+			if frame[i]&0x07 == 0x07 { // cc_valid, cc_type 3: packet start
+				frame[i+1] = frame[i+1]&0x3F | seq<<6
+				seq = (seq + 1) & 3
+			}
+		}
 		ccCount := len(frame) / 3
 		a53 := buildA53CaptionPayload(frame, ccCount)
 		seiMsg := buildSEIMessage(4, a53)
-		seiBody := addEPB(seiMsg)
+		// rbsp_trailing_bits: without the stop bit, cc_data ending in
+		// zero bytes is indistinguishable from trailing_zero_8bits.
+		seiBody := addEPB(append(seiMsg, 0x80))
 
 		var seiNAL []byte
 		if codec == "h264" {
